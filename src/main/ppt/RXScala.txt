@@ -1,0 +1,404 @@
+| \gImports
+
+```
+import rx.lang.scala.{Observable, Subscription}
+
+import java.util.concurrent.{Executors, TimeUnit}
+import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext.Implicits.global
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+```
+---
+| \gDelay function
+
+```
+def delay(d: Long)(block: => Unit) =
+    Executors
+      .newScheduledThreadPool(1)
+      .schedule(
+        new Runnable { override def run(): Unit = block},
+        d, TimeUnit.SECONDS
+      )
+```
+---
+| \gWelcome to ReactiveX for Scala!
+"An API for asynchronous programming with observable streams"
+--
+
+API allows you to
+- Create
+- Combine
+- Listen
+
+Observable streams.
+---
+| \gReactive Extensions for Scala
+- This is a Scala adapter to RxJava.
+- Is Lightweight single JAR
+- Focused on Observable abstraction and related higher-order functions
+---
+| \gRXScala Basic building blocks
+- Observable
+- Observer
+- Combinators
+---
+| \gHow to create Observable??
+--
+From sequence of values:
+
+```
+Observable.just(1, 2, 3)
+```
+
+--
+From Iterable:
+
+```
+Observable.from(List(1, 2, 3))
+```
+---
+From Future:
+
+```
+Observable.from(Future {
+  2 * 2
+})
+```
+---
+Also we can create custom Observable:
+
+```
+Observable.create[Int] { o =>
+  o.onNext(1)
+  o.onNext(2)
+  o.onNext(3)
+  o.onCompleted()
+  Subscription()
+}
+```
+---
+| \gContract
+Every Observable can be in one of three states:
+- uncompleted: can emit events
+- error: cannot emit events
+- completed: cannot emit events
+---
+| \gContract
+We can subscribe to Observable by passing Observer.
+
+```
+trait Observer[-T] {
+ def onNext(value: T): Unit = {}
+ def onError(error: Throwable): Unit= {}
+ def onCompleted(): Unit = {}
+}
+```
+---
+| \gContract
+You can always use one of overloaded subscribe functions:
+
+```
+subscribe(
+  onNext: T => Unit,
+  onError: Throwable => Unit,
+  onCompleted: () => Unit
+  ): Subscription
+```
+
+- onNext: can be called zero or more times
+- onComplete, onError: after call Observable can't emit more events
+---
+| \gContract
+We will use those basic functions in examples
+
+```
+def log[T](msg: T): Unit =
+ println(s"${Thread.currentThread().getName}: $msg")
+
+def error(ex: Throwable): Unit = log(ex.getMessage)
+def next[T](name: String)(x: T): Unit= log(s"$name -> $x")
+def complete(): Unit = log("Complete")
+```
+---
+| \gExceptions
+
+```
+def exceptionsExample = {
+  val o = Observable.just(1, 2, 3)
+  val e = Observable.error(new Exception("Boom!!"))
+  val j = Observable.just(4, 5, 6)
+  val r = o ++ e ++ j
+
+  r.subscribe(
+    next("A) _,
+    error
+  )
+}
+```
+--
+When an Observable object produces an exception, it enters the error
+state and cannot emit more events (it's part of RX contract).
+---
+| \gSubscription
+Will be called by subscriber in two cases:
+- subscriber calls unsubscribe method on uncompleted observable
+- observable switch to completed state (by calling onComplete)
+
+TODO: double check that!!! looks like dev responsible
+When the unsubscribe method is called by Observer then code
+from it will be performed. Second call wont run code once again.
+
+---
+| \gSubscription double unsubscribe example
+TODO add timer example for double unsubscribe from uncomplete o
+```
+val o = create[Int]{ o => ...
+ Subscription { println("Boom!!!") }
+}
+
+val a = o.subscribe(x => println(x), _ => (), () => println("Complete"))
+a.unsubscribe()
+a.unsubscribe()
+```
+---
+| \gSubscription complete example
+```
+def subscriptionExample = {
+  val o = Observable.create[Int]{ o =>
+    o.onNext(1); o.onNext(2)
+    o.onCompleted()
+    Subscription { println("exit") }
+  }
+
+  val a = o.subscribe(next("A"), error, complete)
+  val b = o.subscribe(next("B"), error, complete)
+}
+```
+---
+| \gObservable can be cold or hot
+- cold observable is emitting events only when subscription exists
+- hot observable is emitting events when they appear
+
+It's on developer side to decide how to incorporate source into RX.
+---
+| \gEvent source for next examples
+
+```
+object Source {
+  def apply() = new Source
+}
+class Source {
+  import scala.collection.JavaConversions._
+  val e = Executors.newScheduledThreadPool(1)
+  val acc = new AtomicInteger(0)
+  var listeners = new CopyOnWriteArrayList[(Int => Unit)]
+  val runnable = new Runnable {
+    override def run(): Unit = {
+      val next = acc.incrementAndGet()
+      println(s"Next: $next")
+      listeners.foreach(onNext => onNext.apply(next))
+    }
+  }
+
+  def register(f: Int => Unit) = listeners.add(f)
+  def unregister(f: Int => Unit) = listeners.remove(f)
+  def start(): ScheduledFuture[_] =
+    e.scheduleWithFixedDelay(runnable, 1, 1, TimeUnit.SECONDS)
+}
+```
+---
+| \gCold observable example
+In cold Observable we are creating event source for each subscription.
+For cold Observable we need to stop event source in case of unsubscription.
+
+```
+def coldExample = {
+  val obs = Observable.create[Int] { o =>
+    val src = Source()
+    val sub = src.start(); src.register(o.onNext)
+    Subscription { sub.cancel(false) }
+  }
+  delay(2) {
+    obs.subscribe(next("A") _)
+  }
+  delay(5) {
+    obs.subscribe(next("B") _)
+  }
+}
+```
+---
+| \gHot observable
+In hot observable event source is independent of subscribers.
+For hot Observable we need to unregister from hot source.
+
+```
+def hotExample = {
+  val src = Source();
+  src.start()
+  val obs = Observable.create[Int] { o =>
+    src.register(o.onNext)
+    Subscription { src.unregister(o.onNext) }
+  }
+  delay(3) { obs.subscribe(next("A") _)}
+  delay(5) { obs.subscribe(next("B") _)}
+}
+```
+---
+| \gObservables Composition.
+They can be composed by using various combinators like filter,
+map, take...
+
+It looks similar to Scala sequence collections.
+
+```
+Stream(1, 2, 3, 4)
+  .filter(_ % 2 == 0)
+  .map(x => s"[$x]")
+  .foreach(x => println(x))
+
+Observable.just(1, 2, 3, 4)
+  .filter(_ % 2 == 0)
+  .map(x => s"[$x]")
+  .subscribe(x => println(x))
+```
+---
+| \gObservables Composition example.
+
+```
+//TODO check subscription call in composition case
+def composingExample = {
+  val l = new CountDownLatch(8)
+  val o = Observable.interval(1.second)
+  o.subscribe { i =>
+    l.countDown(); next("B")(i)
+  }
+
+  delay(2) {
+    o.filter(_ % 2 == 0)
+      .map(even => s"[$even]")
+      .take(2)
+      .subscribe(next("B"), error, complete)
+  }
+
+  l.await()
+}
+```
+---
+| \gNested observables
+Observables can be nested one into another. We can flatten or concat
+nested Observables but it's more complex than in Seq
+because of timing of events.
+
+```
+Observable[Observable[Int]]
+```
+---
+| \gNested observables example
+
+```
+def nested: Observable[Observable[(Long, Int)]] =
+  Observable.interval(100.millisecond).map{ i =>
+    def f = Future{
+      val delay = Random.nextInt(1000)
+      Thread.sleep(delay); (i, delay)
+  }
+  val f1 = Observable.from(f)
+  val f2 = Observable.from(f)
+
+  f1 ++ f2
+}
+```
+---
+| \gNested observables concat example
+First option to flatten is by calling concat method.
+This method will emit events from nested Observable in the order
+in which they were created.
+
+```
+def concatExample = {
+  val cdl = new CountDownLatch(10)
+  nested.concat.subscribe { el =>
+    cdl.countDown()
+    log(s"Id: ${el._1}, Delay: ${el._2}")
+  }
+  cdl.await()
+}
+```
+---
+| \gNested observables flatten example
+Another option is to use flatten. This method will emit events from
+nested Observable in the order in which they were completed.
+
+```
+def flattenExample = {
+  val cdl = new CountDownLatch(10)
+  nested.flatten.subscribe { el =>
+    cdl.countDown()
+    log(s"Id: ${el._1}, Delay: ${el._2}")
+  }
+  cdl.await()
+}
+```
+
+--
+Good to know if that flatMap internally is using flatten
+---
+| \gScheduler example
+Scheduler is used to encapsulate the choice of the thread
+on which an observable should emit events.
+
+```
+def schedulerExample = {
+  val cdl = new CountDownLatch(2)
+  val scheduler = ComputationScheduler()
+  val numbers = Observable.just(1, 2, 3)
+
+  numbers.subscribe(x => log(s"$x"))
+  numbers.observeOn(scheduler).subscribe { x =>
+    log(s"dependsOn: $x"); cdl.countDown()
+  }
+  cdl.await()
+}
+```
+---
+| \gSubject
+Subject is simultaneously an Observable and an Observer
+- can subscribe
+- can emit events
+
+Tip
+It is useful in situations when you need to create an Observables
+for which inputs are not available yet
+---
+| \gSubject example
+
+```
+def subjectExample = {
+  val o = Subject[Int]()
+  o.subscribe(x => log(s"x:$x"))
+
+  List(1, 2, 3).foreach(it => o.onNext(it))
+
+  Observable.just(4, 5, 6).subscribe(o)
+}
+```
+---
+| \gQuestions and maybe Answers
+---
+| \gLinks
+Project pages:
+* http://reactivex.io/
+* https://github.com/ReactiveX/RxJava/
+* https://github.com/ReactiveX/RxScala
+
+Book:
+* http://www.amazon.com/Learning-Concurrent-Programming-Aleksandar-Prokopec/dp/1783281413/
+
+MSDN:
+* https://channel9.msdn.com/
+---
+| \gThanks
