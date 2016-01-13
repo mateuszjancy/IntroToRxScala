@@ -1,16 +1,16 @@
 | \gImports
-
 ```
-import rx.lang.scala.{Observable, Subscription}
-
-import java.util.concurrent.{Executors, TimeUnit}
-import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
+import java.util.concurrent.{CopyOnWriteArrayList, CountDownLatch}
+import java.util.concurrent.{Executors, ScheduledFuture, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
+
+import rx.lang.scala.schedulers.ComputationScheduler
+import rx.lang.scala.{Observable, Subject, Subscription}
+
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.util.Random
 ```
 ---
 | \gDelay function
@@ -26,56 +26,51 @@ def delay(d: Long)(block: => Unit) =
 ```
 ---
 | \gWelcome to ReactiveX for Scala!
+
+██████╗ ███████╗ █████╗  ██████╗████████╗██╗██╗   ██╗███████╗██╗  ██╗
+██╔══██╗██╔════╝██╔══██╗██╔════╝╚══██╔══╝██║██║   ██║██╔════╝╚██╗██╔╝
+██████╔╝█████╗  ███████║██║        ██║   ██║██║   ██║█████╗   ╚███╔╝
+██╔══██╗██╔══╝  ██╔══██║██║        ██║   ██║╚██╗ ██╔╝██╔══╝   ██╔██╗
+██║  ██║███████╗██║  ██║╚██████╗   ██║   ██║ ╚████╔╝ ███████╗██╔╝ ██╗
+╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
+
 "An API for asynchronous programming with observable streams"
---
 
-API allows you to
-- Create
-- Combine
-- Listen
+"The Observer pattern done right ReactiveX is a combination of the best
+ideas from the Observer pattern, the Iterator pattern, and functional
+programming.
 
-Observable streams.
+- Easily create event streams or data streams.
+- Compose and transform streams with query-like operators.
+- Subscribe to any observable stream to perform side effects."
+
 ---
 | \gReactive Extensions for Scala
+Main concept
 - This is a Scala adapter to RxJava.
 - Is Lightweight single JAR
 - Focused on Observable abstraction and related higher-order functions
----
-| \gRXScala Basic building blocks
+
+RxScala Basic building blocks
 - Observable
 - Observer
 - Combinators
 ---
 | \gHow to create Observable??
---
-From sequence of values:
 
 ```
+//From sequence of values:
 Observable.just(1, 2, 3)
-```
 
---
-From Iterable:
-
-```
+//From Iterable:
 Observable.from(List(1, 2, 3))
-```
----
-From Future:
 
-```
-Observable.from(Future {
-  2 * 2
-})
-```
----
-Also we can create custom Observable:
+//From Future:
+Observable.from(Future {2 * 2})
 
-```
+//Also we can create a custom Observable:
 Observable.create[Int] { o =>
-  o.onNext(1)
-  o.onNext(2)
-  o.onNext(3)
+  o.onNext(1); o.onNext(2)
   o.onCompleted()
   Subscription()
 }
@@ -86,9 +81,10 @@ Every Observable can be in one of three states:
 - uncompleted: can emit events
 - error: cannot emit events
 - completed: cannot emit events
----
-| \gContract
+
 We can subscribe to Observable by passing Observer.
+- onNext: can be called zero or more times
+- onComplete, onError: after call Observable can't emit more events
 
 ```
 trait Observer[-T] {
@@ -109,22 +105,20 @@ subscribe(
   ): Subscription
 ```
 
-- onNext: can be called zero or more times
-- onComplete, onError: after call Observable can't emit more events
 ---
-| \gContract
+| \gContract example
 We will use those basic functions in examples
 
 ```
-def log[T](msg: T): Unit =
- println(s"${Thread.currentThread().getName}: $msg")
-
+def log[T](msg: T):Unit=println(s"${Thread.currentThread().getName}: $msg")
 def error(ex: Throwable): Unit = log(ex.getMessage)
 def next[T](name: String)(x: T): Unit= log(s"$name -> $x")
 def complete(): Unit = log("Complete")
 ```
 ---
 | \gExceptions
+When an Observable object produces an exception, it enters the error state
+and cannot emit more events (it's part of RX contract).
 
 ```
 def exceptionsExample = {
@@ -133,39 +127,15 @@ def exceptionsExample = {
   val j = Observable.just(4, 5, 6)
   val r = o ++ e ++ j
 
-  r.subscribe(
-    next("A) _,
-    error
-  )
+  r.subscribe(next("A"), error)
 }
 ```
---
-When an Observable object produces an exception, it enters the error
-state and cannot emit more events (it's part of RX contract).
 ---
 | \gSubscription
 Will be called by subscriber in two cases:
-- subscriber calls unsubscribe method on uncompleted observable
-- observable switch to completed state (by calling onComplete)
+- Subscriber calls unsubscribe method on uncompleted observable.
+- Observable switch to completed state (by calling onComplete).
 
-TODO: double check that!!! looks like dev responsible
-When the unsubscribe method is called by Observer then code
-from it will be performed. Second call wont run code once again.
-
----
-| \gSubscription double unsubscribe example
-TODO add timer example for double unsubscribe from uncomplete o
-```
-val o = create[Int]{ o => ...
- Subscription { println("Boom!!!") }
-}
-
-val a = o.subscribe(x => println(x), _ => (), () => println("Complete"))
-a.unsubscribe()
-a.unsubscribe()
-```
----
-| \gSubscription complete example
 ```
 def subscriptionExample = {
   val o = Observable.create[Int]{ o =>
@@ -174,14 +144,14 @@ def subscriptionExample = {
     Subscription { println("exit") }
   }
 
-  val a = o.subscribe(next("A"), error, complete)
-  val b = o.subscribe(next("B"), error, complete)
+  o.subscribe(next("A"), error, complete)
+  o.subscribe(next("B"), error, complete)
 }
 ```
 ---
 | \gObservable can be cold or hot
-- cold observable is emitting events only when subscription exists
-- hot observable is emitting events when they appear
+- Cold observable is emitting events only when subscription exists
+- Hot observable is emitting events when they appear
 
 It's on developer side to decide how to incorporate source into RX.
 ---
@@ -212,8 +182,9 @@ class Source {
 ```
 ---
 | \gCold observable example
-In cold Observable we are creating event source for each subscription.
-For cold Observable we need to stop event source in case of unsubscription.
+In cold Observable we need
+- create event source for each subscription.
+- stop event source in case of unsubscription or completion.
 
 ```
 def coldExample = {
@@ -232,8 +203,10 @@ def coldExample = {
 ```
 ---
 | \gHot observable
-In hot observable event source is independent of subscribers.
-For hot Observable we need to unregister from hot source.
+In hot observable event
+- Event source is independent of subscribers.
+- In case of unsubscription or completion we need to unregister observer
+  from source.
 
 ```
 def hotExample = {
@@ -249,8 +222,7 @@ def hotExample = {
 ```
 ---
 | \gObservables Composition.
-They can be composed by using various combinators like filter,
-map, take...
+Observables can be composed by using various combinators like filter,map...
 
 It looks similar to Scala sequence collections.
 
@@ -269,7 +241,6 @@ Observable.just(1, 2, 3, 4)
 | \gObservables Composition example.
 
 ```
-//TODO check subscription call in composition case
 def composingExample = {
   val l = new CountDownLatch(8)
   val o = Observable.interval(1.second)
@@ -288,16 +259,9 @@ def composingExample = {
 }
 ```
 ---
-| \gNested observables
-Observables can be nested one into another. We can flatten or concat
-nested Observables but it's more complex than in Seq
-because of timing of events.
-
-```
-Observable[Observable[Int]]
-```
----
 | \gNested observables example
+Observables can be nested one into another. We can flatten or concat nested
+Observables but it's more complex than in Seq because of timing of events.
 
 ```
 def nested: Observable[Observable[(Long, Int)]] =
@@ -314,9 +278,8 @@ def nested: Observable[Observable[(Long, Int)]] =
 ```
 ---
 | \gNested observables concat example
-First option to flatten is by calling concat method.
-This method will emit events from nested Observable in the order
-in which they were created.
+First option to flatten is by calling concat method. This method will emit
+events from nested Observable in the order in which they were created.
 
 ```
 def concatExample = {
@@ -330,8 +293,8 @@ def concatExample = {
 ```
 ---
 | \gNested observables flatten example
-Another option is to use flatten. This method will emit events from
-nested Observable in the order in which they were completed.
+Another option is to use flatten. This method will emit events from nested
+Observable in the order in which they were completed.
 
 ```
 def flattenExample = {
@@ -344,12 +307,11 @@ def flattenExample = {
 }
 ```
 
---
 Good to know if that flatMap internally is using flatten
 ---
 | \gScheduler example
-Scheduler is used to encapsulate the choice of the thread
-on which an observable should emit events.
+Scheduler is used to encapsulate the choice of the thread on which
+an observable should emit events.
 
 ```
 def schedulerExample = {
@@ -359,7 +321,7 @@ def schedulerExample = {
 
   numbers.subscribe(x => log(s"$x"))
   numbers.observeOn(scheduler).subscribe { x =>
-    log(s"dependsOn: $x"); cdl.countDown()
+    log(s"Msg: $x"); cdl.countDown()
   }
   cdl.await()
 }
@@ -371,8 +333,8 @@ Subject is simultaneously an Observable and an Observer
 - can emit events
 
 Tip
-It is useful in situations when you need to create an Observables
-for which inputs are not available yet
+It is useful in situations when you need to create an Observables for which
+inputs are not available yet
 ---
 | \gSubject example
 
