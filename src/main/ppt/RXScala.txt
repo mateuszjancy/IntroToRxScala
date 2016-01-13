@@ -1,11 +1,43 @@
+███████╗ ██████╗ █████╗ ██╗      █████╗
+██╔════╝██╔════╝██╔══██╗██║     ██╔══██╗
+███████╗██║     ███████║██║     ███████║
+╚════██║██║     ██╔══██║██║     ██╔══██║
+███████║╚██████╗██║  ██║███████╗██║  ██║
+╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+
+██╗   ██╗███████╗███████╗██████╗
+██║   ██║██╔════╝██╔════╝██╔══██╗
+██║   ██║███████╗█████╗  ██████╔╝
+██║   ██║╚════██║██╔══╝  ██╔══██╗
+╚██████╔╝███████║███████╗██║  ██║
+ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+
+ ██████╗ ██████╗  ██████╗ ██╗   ██╗██████╗
+██╔════╝ ██╔══██╗██╔═══██╗██║   ██║██╔══██╗
+██║  ███╗██████╔╝██║   ██║██║   ██║██████╔╝
+██║   ██║██╔══██╗██║   ██║██║   ██║██╔═══╝
+╚██████╔╝██║  ██║╚██████╔╝╚██████╔╝██║
+ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝
+---
+| \gAgenda
+1) Concept
+2) Building blocks
+3) Exceptions
+4) Subscription
+5) Hot or cold
+6) Nested
+7) Scheduler
+8) Subject
+---
 | \gImports
+
 ```
 import java.util.concurrent.{CopyOnWriteArrayList, CountDownLatch}
 import java.util.concurrent.{Executors, ScheduledFuture, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
 import rx.lang.scala.schedulers.ComputationScheduler
-import rx.lang.scala.{Observable, Subject, Subscription}
+import rx.lang.scala.{Observable, Observer, Subject, Subscription}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -16,16 +48,14 @@ import scala.util.Random
 | \gDelay function
 
 ```
-def delay(d: Long)(block: => Unit) =
-    Executors
-      .newScheduledThreadPool(1)
-      .schedule(
-        new Runnable { override def run(): Unit = block},
-        d, TimeUnit.SECONDS
-      )
+def delay(d: Long)(block: => Unit) = {
+  val e = Executors.newScheduledThreadPool(1)
+  val r = new Runnable { override def run(): Unit = block }
+  e.schedule(r, d, TimeUnit.SECONDS)
+  e.shutdown()
+}
 ```
 ---
-| \gWelcome to ReactiveX for Scala!
 
 ██████╗ ███████╗ █████╗  ██████╗████████╗██╗██╗   ██╗███████╗██╗  ██╗
 ██╔══██╗██╔════╝██╔══██╗██╔════╝╚══██╔══╝██║██║   ██║██╔════╝╚██╗██╔╝
@@ -40,18 +70,24 @@ def delay(d: Long)(block: => Unit) =
 ideas from the Observer pattern, the Iterator pattern, and functional
 programming.
 
-- Easily create event streams or data streams.
-- Compose and transform streams with query-like operators.
-- Subscribe to any observable stream to perform side effects."
+- Easily \rcreate event streams \sor data streams.
+- Compose and \rtransform streams \swith query-like operators.
+- Subscribe to any observable stream to \rperform side effects.\s"
 
 ---
-| \gReactive Extensions for Scala
-Main concept
-- This is a Scala adapter to RxJava.
-- Is Lightweight single JAR
-- Focused on Observable abstraction and related higher-order functions
+██████╗ ██╗  ██╗███████╗ ██████╗ █████╗ ██╗      █████╗
+██╔══██╗╚██╗██╔╝██╔════╝██╔════╝██╔══██╗██║     ██╔══██╗
+██████╔╝ ╚███╔╝ ███████╗██║     ███████║██║     ███████║
+██╔══██╗ ██╔██╗ ╚════██║██║     ██╔══██║██║     ██╔══██║
+██║  ██║██╔╝ ██╗███████║╚██████╗██║  ██║███████╗██║  ██║
+╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 
-RxScala Basic building blocks
+\*Main concept
+- This is a Scala \radapter \sto RxJava.
+- Is \rlightweight\s.
+- Focused on \rsingle concept\s.
+
+\*RxScala Basic building blocks
 - Observable
 - Observer
 - Combinators
@@ -77,14 +113,15 @@ Observable.create[Int] { o =>
 ```
 ---
 | \gContract
-Every Observable can be in one of three states:
-- uncompleted: can emit events
-- error: cannot emit events
-- completed: cannot emit events
 
-We can subscribe to Observable by passing Observer.
-- onNext: can be called zero or more times
-- onComplete, onError: after call Observable can't emit more events
+\*Every Observable can be in one of three states:
+- \rUncompleted\s: can emit events
+- \rError\s: cannot emit events
+- \rCompleted\s: cannot emit events
+
+\*We can subscribe to Observable by passing Observer.
+- \ronNext\s: can be called \rzero \sor more times
+- \ronComplete, onError\s: after call Observable \rcan't emit \smore events
 
 ```
 trait Observer[-T] {
@@ -93,20 +130,19 @@ trait Observer[-T] {
  def onCompleted(): Unit = {}
 }
 ```
----
-| \gContract
-You can always use one of overloaded subscribe functions:
+
+You can always use one of \roverloaded subscribe functions\s:
 
 ```
 subscribe(
   onNext: T => Unit,
   onError: Throwable => Unit,
-  onCompleted: () => Unit
-  ): Subscription
+  onCompleted: () => Unit): Subscription
 ```
 
 ---
 | \gContract example
+
 We will use those basic functions in examples
 
 ```
@@ -116,9 +152,15 @@ def next[T](name: String)(x: T): Unit= log(s"$name -> $x")
 def complete(): Unit = log("Complete")
 ```
 ---
-| \gExceptions
-When an Observable object produces an exception, it enters the error state
-and cannot emit more events (it's part of RX contract).
+███████╗██╗  ██╗
+██╔════╝╚██╗██╔╝
+█████╗   ╚███╔╝
+██╔══╝   ██╔██╗
+███████╗██╔╝ ██╗
+╚══════╝╚═╝  ╚═╝
+
+When an Observable object \rproduces an exception\s, it enters the error state
+and \rcannot emit more events \s(it's part of RX contract).
 
 ```
 def exceptionsExample = {
@@ -131,10 +173,32 @@ def exceptionsExample = {
 }
 ```
 ---
-| \gSubscription
-Will be called by subscriber in two cases:
-- Subscriber calls unsubscribe method on uncompleted observable.
-- Observable switch to completed state (by calling onComplete).
+███████╗██╗   ██╗██████╗
+██╔════╝██║   ██║██╔══██╗
+███████╗██║   ██║██████╔╝
+╚════██║██║   ██║██╔══██╗
+███████║╚██████╔╝██████╔╝
+╚══════╝ ╚═════╝ ╚═════╝
+
+    ███████╗ ██████╗██████╗ ██╗
+    ██╔════╝██╔════╝██╔══██╗██║
+    ███████╗██║     ██████╔╝██║
+    ╚════██║██║     ██╔══██╗██║
+    ███████║╚██████╗██║  ██║██║
+    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝
+
+        ██████╗ ████████╗██╗ ██████╗ ███╗   ██╗
+        ██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
+        ██████╔╝   ██║   ██║██║   ██║██╔██╗ ██║
+        ██╔══██╗   ██║   ██║██║   ██║██║╚██╗██║
+        ██████╔╝   ██║   ██║╚██████╔╝██║ ╚████║
+        ╚═════╝    ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+---
+| \gSubscription example.
+
+\*Will be called by subscriber in two cases:
+- Subscriber calls \runsubscribe\s method on uncompleted observable.
+- Observable switch to \rcompleted\s state (by calling onComplete).
 
 ```
 def subscriptionExample = {
@@ -149,11 +213,26 @@ def subscriptionExample = {
 }
 ```
 ---
-| \gObservable can be cold or hot
-- Cold observable is emitting events only when subscription exists
-- Hot observable is emitting events when they appear
+ █████╗ ██████╗ ███████╗    ██╗   ██╗ ██████╗ ██╗   ██╗
+██╔══██╗██╔══██╗██╔════╝    ╚██╗ ██╔╝██╔═══██╗██║   ██║
+███████║██████╔╝█████╗       ╚████╔╝ ██║   ██║██║   ██║
+██╔══██║██╔══██╗██╔══╝        ╚██╔╝  ██║   ██║██║   ██║
+██║  ██║██║  ██║███████╗       ██║   ╚██████╔╝╚██████╔╝
+╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝       ╚═╝    ╚═════╝  ╚═════╝
 
-It's on developer side to decide how to incorporate source into RX.
+ ██████╗ ██████╗ ██╗     ██████╗      ██████╗ ██████╗
+██╔════╝██╔═══██╗██║     ██╔══██╗    ██╔═══██╗██╔══██╗
+██║     ██║   ██║██║     ██║  ██║    ██║   ██║██████╔╝
+██║     ██║   ██║██║     ██║  ██║    ██║   ██║██╔══██╗
+╚██████╗╚██████╔╝███████╗██████╔╝    ╚██████╔╝██║  ██║
+ ╚═════╝ ╚═════╝ ╚══════╝╚═════╝      ╚═════╝ ╚═╝  ╚═╝
+
+██╗  ██╗ ██████╗ ████████╗
+██║  ██║██╔═══██╗╚══██╔══╝
+███████║██║   ██║   ██║
+██╔══██║██║   ██║   ██║
+██║  ██║╚██████╔╝   ██║
+╚═╝  ╚═╝ ╚═════╝    ╚═╝
 ---
 | \gEvent source for next examples
 
@@ -165,66 +244,80 @@ class Source {
   import scala.collection.JavaConversions._
   val e = Executors.newScheduledThreadPool(1)
   val acc = new AtomicInteger(0)
-  var listeners = new CopyOnWriteArrayList[(Int => Unit)]
+  var listeners = new CopyOnWriteArrayList[Observer[Int]]
   val runnable = new Runnable {
     override def run(): Unit = {
-      val next = acc.incrementAndGet()
-      println(s"Next: $next")
-      listeners.foreach(onNext => onNext.apply(next))
+      val next = acc.incrementAndGet(); println(s"Next: $next")
+      listeners.foreach(_.onNext(next))
     }
   }
-
-  def register(f: Int => Unit) = listeners.add(f)
-  def unregister(f: Int => Unit) = listeners.remove(f)
-  def start(): ScheduledFuture[_] =
-    e.scheduleWithFixedDelay(runnable, 1, 1, TimeUnit.SECONDS)
+  def register(o: Observer[Int]) = listeners.add(o)
+  def unregister(o: Observer[Int]) = {
+    listeners.remove(o); o.onCompleted()
+  }
+  def start() = e.scheduleWithFixedDelay(runnable, 1, 1, TimeUnit.SECONDS)
+  def stop() = e.shutdownNow()
 }
 ```
 ---
 | \gCold observable example
+
 In cold Observable we need
-- create event source for each subscription.
-- stop event source in case of unsubscription or completion.
+- \rCreate event \ssource per each subscription.
+- \rStop event source \sin case of unsubscription or completion.
 
 ```
 def coldExample = {
   val obs = Observable.create[Int] { o =>
-    val src = Source()
-    val sub = src.start(); src.register(o.onNext)
-    Subscription { sub.cancel(false) }
+    log("Subscribe")
+    val src = Source(); src.start(); src.register(o)
+    Subscription {
+      log("Unsubscribe"); src.unregister(o); src.stop()
+    }
   }
   delay(2) {
-    obs.subscribe(next("A") _)
+    val a = obs.subscribe(next("A"), error, complete)
+    delay(5) { a.unsubscribe() }
   }
-  delay(5) {
-    obs.subscribe(next("B") _)
+  delay(4) {
+    val b = obs.subscribe(next("B"), error, complete)
+    delay(5) { b.unsubscribe() }
   }
 }
 ```
 ---
 | \gHot observable
+
 In hot observable event
-- Event source is independent of subscribers.
-- In case of unsubscription or completion we need to unregister observer
+- Event source is \rindependent\s of subscribers.
+- In case of unsubscription or completion we need to \runregister \sobserver
   from source.
 
 ```
 def hotExample = {
-  val src = Source();
-  src.start()
+  val src = Source(); src.start()
   val obs = Observable.create[Int] { o =>
-    src.register(o.onNext)
-    Subscription { src.unregister(o.onNext) }
+    src.register(o)
+    Subscription { log("Unsubscribe"); src.unregister(o) }
   }
-  delay(3) { obs.subscribe(next("A") _)}
-  delay(5) { obs.subscribe(next("B") _)}
+  delay(2) {
+    val a = obs.subscribe(next("A"), error, complete)
+    delay(5) { a.unsubscribe() }
+  }
+  delay(4) {
+    val b = obs.subscribe(next("B"), error, complete)
+    delay(5) { b.unsubscribe() }
+  }
+  delay(15) { log("Source stop"); src.stop() }
 }
+
 ```
 ---
 | \gObservables Composition.
-Observables can be composed by using various combinators like filter,map...
 
-It looks similar to Scala sequence collections.
+Observables can be \rcomposed by using various combinators \slike filter,map...
+
+\*It looks similar to Scala sequence collections.
 
 ```
 Stream(1, 2, 3, 4)
@@ -242,33 +335,35 @@ Observable.just(1, 2, 3, 4)
 
 ```
 def composingExample = {
-  val l = new CountDownLatch(8)
-  val o = Observable.interval(1.second)
-  o.subscribe { i =>
-    l.countDown(); next("B")(i)
-  }
-
-  delay(2) {
-    o.filter(_ % 2 == 0)
-      .map(even => s"[$even]")
-      .take(2)
-      .subscribe(next("B"), error, complete)
-  }
-
-  l.await()
+  Observable
+    .just(1, 2, 3, 4)
+    .filter(_ % 2 == 0)
+    .map(even => s"[$even]")
+    .take(2)
+    .subscribe(next("B"), error, complete)
 }
 ```
 ---
-| \gNested observables example
-Observables can be nested one into another. We can flatten or concat nested
-Observables but it's more complex than in Seq because of timing of events.
+ ███▄    █ ▓█████   ██████ ▄▄▄█████▓▓█████ ▓█████▄
+ ██ ▀█   █ ▓█   ▀ ▒██    ▒ ▓  ██▒ ▓▒▓█   ▀ ▒██▀ ██▌
+▓██  ▀█ ██▒▒███   ░ ▓██▄   ▒ ▓██░ ▒░▒███   ░██   █▌
+▓██▒  ▐▌██▒▒▓█  ▄   ▒   ██▒░ ▓██▓ ░ ▒▓█  ▄ ░▓█▄   ▌
+▒██░   ▓██░░▒████▒▒██████▒▒  ▒██▒ ░ ░▒████▒░▒████▓
+░ ▒░   ▒ ▒ ░░ ▒░ ░▒ ▒▓▒ ▒ ░  ▒ ░░   ░░ ▒░ ░ ▒▒▓  ▒
+░ ░░   ░ ▒░ ░ ░  ░░ ░▒  ░ ░    ░     ░ ░  ░ ░ ▒  ▒
+   ░   ░ ░    ░   ░  ░  ░    ░         ░    ░ ░  ░
+         ░    ░  ░      ░              ░  ░   ░
+                                            ░
+Observables can be \rnested one into another\s. We can \rflatten or concat\s nested
+Observables but it's \rmore complex\s than in Seq because of \rtiming\s of events.
 
 ```
 def nested: Observable[Observable[(Long, Int)]] =
-  Observable.interval(100.millisecond).map{ i =>
-    def f = Future{
-      val delay = Random.nextInt(1000)
-      Thread.sleep(delay); (i, delay)
+Observable.interval(100.millisecond).map { i =>
+  def f = Future {
+    val delay = Random.nextInt(1000)
+    Thread.sleep(delay);
+    (i, delay)
   }
   val f1 = Observable.from(f)
   val f2 = Observable.from(f)
@@ -278,61 +373,76 @@ def nested: Observable[Observable[(Long, Int)]] =
 ```
 ---
 | \gNested observables concat example
-First option to flatten is by calling concat method. This method will emit
-events from nested Observable in the order in which they were created.
+
+First option to \rconcat \sis by calling concat method. This method will emit
+events from nested Observable in the \rorder in which they were created\s.
 
 ```
 def concatExample = {
-  val cdl = new CountDownLatch(10)
-  nested.concat.subscribe { el =>
-    cdl.countDown()
-    log(s"Id: ${el._1}, Delay: ${el._2}")
-  }
-  cdl.await()
+    val cdl = new CountDownLatch(10)
+    val s = nested.concat.subscribe { el =>
+        cdl.countDown()
+        log(s"Id: ${el._1}, Delay: ${el._2}")
+    }
+    cdl.await()
+    s.unsubscribe()
 }
 ```
 ---
 | \gNested observables flatten example
-Another option is to use flatten. This method will emit events from nested
-Observable in the order in which they were completed.
+
+Another option is to use \rflatten\s. This method will emit events from nested
+Observable in the \rorder in which they were completed\s.
 
 ```
 def flattenExample = {
   val cdl = new CountDownLatch(10)
-  nested.flatten.subscribe { el =>
+  val s = nested.flatten.subscribe { el =>
     cdl.countDown()
     log(s"Id: ${el._1}, Delay: ${el._2}")
   }
   cdl.await()
+  s.unsubscribe()
 }
 ```
 
-Good to know if that flatMap internally is using flatten
+Good to know if that \rflatMap\s internally is using \rflatten\s
 ---
-| \gScheduler example
-Scheduler is used to encapsulate the choice of the thread on which
-an observable should emit events.
+███████╗ ██████╗██╗  ██╗███████╗██████╗ ██╗   ██╗██╗     ███████╗██████╗
+██╔════╝██╔════╝██║  ██║██╔════╝██╔══██╗██║   ██║██║     ██╔════╝██╔══██╗
+███████╗██║     ███████║█████╗  ██║  ██║██║   ██║██║     █████╗  ██████╔╝
+╚════██║██║     ██╔══██║██╔══╝  ██║  ██║██║   ██║██║     ██╔══╝  ██╔══██╗
+███████║╚██████╗██║  ██║███████╗██████╔╝╚██████╔╝███████╗███████╗██║  ██║
+╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+
+Is used to \rencapsulate\s the \rchoice \sof the \rthread \son which an \robservable\s
+should emit events.
 
 ```
 def schedulerExample = {
-  val cdl = new CountDownLatch(2)
+  val l = new CountDownLatch(1)
   val scheduler = ComputationScheduler()
   val numbers = Observable.just(1, 2, 3)
-
-  numbers.subscribe(x => log(s"$x"))
-  numbers.observeOn(scheduler).subscribe { x =>
-    log(s"Msg: $x"); cdl.countDown()
+  numbers.subscribe(x => log(s"Subscribe: $x"))
+  numbers.subscribeOn(scheduler).subscribe { x =>
+    log(s"SubscribeOn: $x");l.countDown()
   }
-  cdl.await()
+  l.await()
 }
 ```
 ---
-| \gSubject
-Subject is simultaneously an Observable and an Observer
-- can subscribe
-- can emit events
+███████╗██╗   ██╗██████╗      ██╗███████╗ ██████╗████████╗
+██╔════╝██║   ██║██╔══██╗     ██║██╔════╝██╔════╝╚══██╔══╝
+███████╗██║   ██║██████╔╝     ██║█████╗  ██║        ██║
+╚════██║██║   ██║██╔══██╗██   ██║██╔══╝  ██║        ██║
+███████║╚██████╔╝██████╔╝╚█████╔╝███████╗╚██████╗   ██║
+╚══════╝ ╚═════╝ ╚═════╝  ╚════╝ ╚══════╝ ╚═════╝   ╚═╝
 
-Tip
+Is simultaneously an Observable and an Observer
+- Can subscribe
+- Can emit events
+
+\RTip\s
 It is useful in situations when you need to create an Observables for which
 inputs are not available yet
 ---
@@ -341,15 +451,22 @@ inputs are not available yet
 ```
 def subjectExample = {
   val o = Subject[Int]()
-  o.subscribe(x => log(s"x:$x"))
-
+  o.subscribe(x => log(s"Subject:$x"))
   List(1, 2, 3).foreach(it => o.onNext(it))
-
   Observable.just(4, 5, 6).subscribe(o)
 }
 ```
 ---
-| \gQuestions and maybe Answers
+
+  ,ad8888ba,       ,adba,            db
+ d8"'    `"8b      8I  I8           d88b
+d8'        `8b     "8bdP'          d8'`8b
+88          88    ,d8"8b  88      d8'  `8b
+88          88  .dP'   Yb,8I     d8YaaaaY8b
+Y8,    "88,,8P  8P      888'    d8""""""""8b
+ Y8a.    Y88P   8b,   ,dP8b    d8'        `8b
+  `"Y8888Y"Y8a  `Y8888P"  Yb  d8'          `8b
+
 ---
 | \gLinks
 Project pages:
@@ -363,4 +480,11 @@ Book:
 MSDN:
 * https://channel9.msdn.com/
 ---
-| \gThanks
+[... [......[..     [..[..      [..
+     [..    [..     [.. [..   [..
+     [..    [..     [..  [.. [..
+     [..    [...... [..    [..
+     [..    [..     [..  [.. [..
+     [..    [..     [.. [..   [..
+     [..    [..     [..[..      [..
+
